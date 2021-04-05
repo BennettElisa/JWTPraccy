@@ -1,60 +1,72 @@
 const Sequelize = require('sequelize');
+const jwt = require('jsonwebtoken');
+
 const { STRING } = Sequelize;
 const config = {
   logging: false
 };
 
-if(process.env.LOGGING){
+if (process.env.LOGGING) {
   delete config.logging;
 }
-const conn = new Sequelize(process.env.DATABASE_URL || 'postgres://localhost/acme_db', config);
+const conn = new Sequelize(
+  process.env.DATABASE_URL || 'postgres://localhost/acme_db',
+  config
+);
 
 const User = conn.define('user', {
   username: STRING,
   password: STRING
 });
 
-User.byToken = async(token)=> {
+User.byToken = async (token) => {
   try {
+    console.log('USER BY TOKEN: ', token);
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    console.log('User.byToken payload: ', payload);
     const user = await User.findByPk(token);
-    if(user){
+    console.log('User findByPk: ', user);
+    if (user && payload) {
       return user;
     }
     const error = Error('bad credentials');
-    error.status = 401;;
+    error.status = 401;
     throw error;
-  }
-  catch(ex){
+  } catch (ex) {
     const error = Error('bad credentials');
-    error.status = 401;;
+    error.status = 401;
     throw error;
   }
 };
 
-User.authenticate = async({ username, password })=> {
+User.authenticate = async ({ username, password }) => {
+  // "user" variable declared from "User" model
   const user = await User.findOne({
     where: {
       username,
       password
     }
   });
-  if(user){
-    return {token: process.env.JWT }
+  if (user) {
+    return jwt.sign(
+      { id: user.id, username: user.username },
+      process.env.JWT_SECRET
+    );
   }
   const error = Error('bad credentials');
   error.status = 401;
   throw error;
 };
 
-const syncAndSeed = async()=> {
+const syncAndSeed = async () => {
   await conn.sync({ force: true });
   const credentials = [
-    { username: 'lucy', password: 'lucy_pw'},
-    { username: 'moe', password: 'moe_pw'},
-    { username: 'larry', password: 'larry_pw'}
+    { username: 'lucy', password: 'lucy_pw' },
+    { username: 'moe', password: 'moe_pw' },
+    { username: 'larry', password: 'larry_pw' }
   ];
   const [lucy, moe, larry] = await Promise.all(
-    credentials.map( credential => User.create(credential))
+    credentials.map((credential) => User.create(credential))
   );
   return {
     users: {
